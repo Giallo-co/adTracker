@@ -1,0 +1,17 @@
+apiVersion: 1
+
+datasources:
+  - name: InfluxDB
+    type: influxdb
+    access: proxy
+    url: http://influxdb:8086
+    jsonData:
+      version: Flux
+      organization: adtracker
+      defaultBucket: metrics
+      tlsSkipVerify: true
+    secureJsonData:
+      token: my-super-secret-auth-token
+  - name: ReportingAPI
+    type: infinity
+    url: http://reporting:8081
