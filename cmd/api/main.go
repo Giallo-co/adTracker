@@ -34,6 +34,10 @@ func main() {
 		api.POST("/conversion", handlers.ConversionHandler)
 	}
 
+	r.GET("/health", func(c *gin.Context) {
+		c.JSON(200, gin.H{"status": "ok"})
+	})
+
 	port := os.Getenv("PORT")
 	if port == "" {
 		port = "8080"
