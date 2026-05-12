@@ -8,17 +8,32 @@ app = FastAPI()
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Configure DuckDB to use MinIO (S3 compatible)
+# Configure DuckDB with strict Phase 8 SECRET management
 def get_duckdb_conn():
-    conn = duckdb.connect(':memory:')
+    conn = duckdb.connect(database=':memory:')
     conn.execute("INSTALL httpfs;")
     conn.execute("LOAD httpfs;")
+    conn.execute("INSTALL aws;")
+    conn.execute("LOAD aws;")
+    
+    access_key = os.getenv('MINIO_ACCESS_KEY', 'minioadmin')
+    secret_key = os.getenv('MINIO_SECRET_KEY', 'minioadmin')
     endpoint = os.getenv('MINIO_ENDPOINT', 'minio:9000')
-    conn.execute(f"SET s3_endpoint='{endpoint}';")
-    conn.execute(f"SET s3_access_key_id='{os.getenv('MINIO_ACCESS_KEY', 'minioadmin')}';")
-    conn.execute(f"SET s3_secret_access_key='{os.getenv('MINIO_SECRET_KEY', 'minioadmin')}';")
-    conn.execute("SET s3_url_style='path';")
-    conn.execute("SET s3_use_ssl=false;")
+    
+    logger.info(f"Setting up DuckDB S3 Secret for endpoint: {endpoint}")
+    
+    # Precise Phase 8 syntax for secret management
+    conn.execute(f"""
+        CREATE OR REPLACE SECRET (
+            TYPE S3,
+            KEY_ID '{access_key}',
+            SECRET '{secret_key}',
+            REGION 'us-east-1',
+            ENDPOINT '{endpoint}',
+            USE_SSL false,
+            URL_STYLE 'path'
+        );
+    """)
     return conn
 
 @app.get("/report/top-states")
@@ -26,16 +41,20 @@ def top_states():
     try:
         conn = get_duckdb_conn()
         bucket = os.getenv('MINIO_BUCKET', 'events-raw')
+        # Explicit Hive pattern from Phase 8
         query = f"""
-            SELECT state, COUNT(*) as impressions
-            FROM read_json_auto('s3://{bucket}/events/impressions/*/*/*/*/*.json')
-            GROUP BY state
-            ORDER BY impressions DESC
-            LIMIT 10
+            SELECT 
+                state, 
+                COUNT(*) as total_impressions 
+            FROM read_json_auto(
+                's3://{bucket}/events/impressions/year=*/month=*/day=*/hour=*/*.json',
+                hive_partitioning=1
+            )
+            GROUP BY state 
+            ORDER BY total_impressions DESC 
+            LIMIT 10;
         """
-        logger.info(f"Executing query: {query}")
         df = conn.execute(query).df()
-        # Handle NaN/Inf
         df = df.fillna(0)
         return df.to_dict(orient='records')
     except Exception as e:
@@ -47,15 +66,19 @@ def top_advertisers():
     try:
         conn = get_duckdb_conn()
         bucket = os.getenv('MINIO_BUCKET', 'events-raw')
-        # Simplified query for now
+        # Optimized query with hive_partitioning
         query = f"""
-            SELECT user_info.state as state, SUM(conversion_value) as revenue
-            FROM read_json_auto('s3://{bucket}/events/conversions/*/*/*/*/*.json')
+            SELECT 
+                user_info.state as state, 
+                SUM(conversion_value) as revenue
+            FROM read_json_auto(
+                's3://{bucket}/events/conversions/year=*/month=*/day=*/hour=*/*.json',
+                hive_partitioning=1
+            )
             GROUP BY state
             ORDER BY revenue DESC
             LIMIT 10
         """
-        logger.info(f"Executing query: {query}")
         df = conn.execute(query).df()
         df = df.fillna(0)
         return df.to_dict(orient='records')
