@@ -342,7 +342,7 @@
     },
     {
       "datasource": {
-        "type": "yesoreyerone-infinity-datasource",
+        "type": "yesoreyeram-infinity-datasource",
         "uid": "PB8E226E4E220750D"
       },
       "gridPos": {
