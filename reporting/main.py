@@ -19,6 +19,7 @@ def get_duckdb_conn():
     access_key = os.getenv('MINIO_ACCESS_KEY', 'minioadmin')
     secret_key = os.getenv('MINIO_SECRET_KEY', 'minioadmin')
     endpoint = os.getenv('MINIO_ENDPOINT', 'minio:9000')
+
     
     logger.info(f"Setting up DuckDB S3 Secret for endpoint: {endpoint}")
     
@@ -35,6 +36,10 @@ def get_duckdb_conn():
         );
     """)
     return conn
+
+@app.get("/")
+def read_root():
+    return {"status": "Reporting Service Active", "endpoints": ["/report/top-states", "/report/top-advertisers"]}
 
 @app.get("/report/top-states")
 def top_states():
@@ -54,6 +59,7 @@ def top_states():
             ORDER BY total_impressions DESC 
             LIMIT 10;
         """
+        logger.info("Executing Phase 8 query for top-states")
         df = conn.execute(query).df()
         df = df.fillna(0)
         return df.to_dict(orient='records')
@@ -70,15 +76,16 @@ def top_advertisers():
         query = f"""
             SELECT 
                 user_info.state as state, 
-                SUM(conversion_value) as revenue
+                SUM(CAST(conversion_value AS DOUBLE)) as revenue
             FROM read_json_auto(
                 's3://{bucket}/events/conversions/year=*/month=*/day=*/hour=*/*.json',
                 hive_partitioning=1
             )
-            GROUP BY state
+            GROUP BY 1
             ORDER BY revenue DESC
             LIMIT 10
         """
+        logger.info("Executing Phase 8 query for top-advertisers")
         df = conn.execute(query).df()
         df = df.fillna(0)
         return df.to_dict(orient='records')
