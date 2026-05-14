@@ -46,7 +46,7 @@ services:
       context: .
       dockerfile: Dockerfile.api
     ports:
-      - "8080:8080"
+      - "8085:8080"
     environment:
       - KAFKA_BROKERS=${KAFKA_BROKERS}
       - GIN_MODE=${GIN_MODE}
