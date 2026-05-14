@@ -42,8 +42,8 @@ func main() {
 	handler := &ConsumerHandler{
 		Ready:       make(chan bool),
 		store:       store,
-		batchSize:   500,
-		flushInterval: 5 * time.Second,
+		batchSize:     500,
+		flushInterval: 1 * time.Second,
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())

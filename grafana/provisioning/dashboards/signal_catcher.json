@@ -58,7 +58,7 @@
         "orientation": "auto",
         "reduceOptions": {
           "calcs": [
-            "sum"
+            "lastNotNull"
           ],
           "fields": "",
           "values": false
@@ -72,7 +72,7 @@
             "type": "influxdb",
             "uid": "P951FEA4DE68E13C5"
           },
-          "query": "from(bucket: \"metrics\")\n  |> range(start: -24h)\n  |> filter(fn: (r) => r._measurement == \"impression\")\n  |> group()\n  |> count()",
+          "query": "from(bucket: \"metrics\")\n  |> range(start: 0)\n  |> filter(fn: (r) => r._measurement == \"impression\")\n  |> filter(fn: (r) => r._field == \"count\")\n  |> group()\n  |> sum()",
           "refId": "A"
         }
       ],
@@ -116,7 +116,7 @@
         "orientation": "auto",
         "reduceOptions": {
           "calcs": [
-            "sum"
+            "lastNotNull"
           ],
           "fields": "",
           "values": false
@@ -130,7 +130,7 @@
             "type": "influxdb",
             "uid": "P951FEA4DE68E13C5"
           },
-          "query": "from(bucket: \"metrics\")\n  |> range(start: -24h)\n  |> filter(fn: (r) => r._measurement == \"click\")\n  |> group()\n  |> count()",
+          "query": "from(bucket: \"metrics\")\n  |> range(start: 0)\n  |> filter(fn: (r) => r._measurement == \"click\")\n  |> filter(fn: (r) => r._field == \"count\")\n  |> group()\n  |> sum()",
           "refId": "A"
         }
       ],
@@ -174,7 +174,7 @@
         "orientation": "auto",
         "reduceOptions": {
           "calcs": [
-            "sum"
+            "lastNotNull"
           ],
           "fields": "",
           "values": false
@@ -188,7 +188,7 @@
             "type": "influxdb",
             "uid": "P951FEA4DE68E13C5"
           },
-          "query": "from(bucket: \"metrics\")\n  |> range(start: -24h)\n  |> filter(fn: (r) => r._measurement == \"conversion\")\n  |> group()\n  |> count()",
+          "query": "from(bucket: \"metrics\")\n  |> range(start: 0)\n  |> filter(fn: (r) => r._measurement == \"conversion\")\n  |> filter(fn: (r) => r._field == \"count\")\n  |> group()\n  |> sum()",
           "refId": "A"
         }
       ],
@@ -275,7 +275,7 @@
             "type": "influxdb",
             "uid": "P951FEA4DE68E13C5"
           },
-          "query": "from(bucket: \"metrics\")\n  |> range(start: -1h)\n  |> filter(fn: (r) => r._measurement == \"impression\" or r._measurement == \"click\" or r._measurement == \"conversion\")\n  |> aggregateWindow(every: 1m, fn: count, createEmpty: false)\n  |> yield(name: \"events_per_minute\")",
+          "query": "from(bucket: \"metrics\")\n  |> range(start: -1h)\n  |> filter(fn: (r) => r._measurement == \"impression\" or r._measurement == \"click\" or r._measurement == \"conversion\")\n  |> filter(fn: (r) => r._field == \"count\")\n  |> aggregateWindow(every: 1m, fn: sum, createEmpty: false)\n  |> yield(name: \"events_per_minute\")",
           "refId": "A"
         }
       ],
@@ -341,11 +341,77 @@
             "type": "influxdb",
             "uid": "P951FEA4DE68E13C5"
           },
-          "query": "clicks = from(bucket: \"metrics\")\n  |> range(start: -1h)\n  |> filter(fn: (r) => r._measurement == \"click\")\n  |> group()\n  |> count()\n\nimpressions = from(bucket: \"metrics\")\n  |> range(start: -1h)\n  |> filter(fn: (r) => r._measurement == \"impression\")\n  |> group()\n  |> count()\n\njoin(tables: {c: clicks, i: impressions}, on: [\"_start\", \"_stop\"])\n  |> map(fn: (r) => ({ _value: float(v: r._value_c) / float(v: r._value_i) * 100.0 }))",
+          "query": "from(bucket: \"metrics\")\n  |> range(start: -1h)\n  |> filter(fn: (r) => r._measurement == \"click\")\n  |> filter(fn: (r) => r._field == \"count\")\n  |> group()\n  |> sum()",
           "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "influxdb",
+            "uid": "P951FEA4DE68E13C5"
+          },
+          "hide": false,
+          "query": "from(bucket: \"metrics\")\n  |> range(start: -1h)\n  |> filter(fn: (r) => r._measurement == \"impression\")\n  |> filter(fn: (r) => r._field == \"count\")\n  |> group()\n  |> sum()",
+          "refId": "B"
         }
       ],
       "title": "CTR (1h Window)",
+      "transformations": [
+        {
+          "id": "calculateField",
+          "options": {
+            "alias": "CTR",
+            "binary": {
+              "left": "_value",
+              "operator": "/",
+              "reducer": "sum",
+              "right": "_value"
+            },
+            "mode": "binary",
+            "reduce": {
+              "reducer": "sum"
+            }
+          }
+        },
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "A-_value": true,
+              "B-_value": true,
+              "Time": true,
+              "_value": true
+            },
+            "indexByName": {},
+            "renameByName": {}
+          }
+        },
+        {
+          "id": "calculateField",
+          "options": {
+            "alias": "CTR_Percent",
+            "binary": {
+              "left": "CTR",
+              "operator": "*",
+              "reducer": "sum",
+              "right": "100"
+            },
+            "mode": "binary",
+            "reduce": {
+              "reducer": "sum"
+            }
+          }
+        },
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "CTR": true
+            },
+            "indexByName": {},
+            "renameByName": {}
+          }
+        }
+      ],
       "type": "gauge"
     },
     {
@@ -407,11 +473,77 @@
             "type": "influxdb",
             "uid": "P951FEA4DE68E13C5"
           },
-          "query": "convs = from(bucket: \"metrics\")\n  |> range(start: -1h)\n  |> filter(fn: (r) => r._measurement == \"conversion\")\n  |> group()\n  |> count()\n\nclicks = from(bucket: \"metrics\")\n  |> range(start: -1h)\n  |> filter(fn: (r) => r._measurement == \"click\")\n  |> group()\n  |> count()\n\njoin(tables: {co: convs, cl: clicks}, on: [\"_start\", \"_stop\"])\n  |> map(fn: (r) => ({ _value: float(v: r._value_co) / float(v: r._value_cl) * 100.0 }))",
+          "query": "from(bucket: \"metrics\")\n  |> range(start: -1h)\n  |> filter(fn: (r) => r._measurement == \"conversion\")\n  |> filter(fn: (r) => r._field == \"count\")\n  |> group()\n  |> sum()",
           "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "influxdb",
+            "uid": "P951FEA4DE68E13C5"
+          },
+          "hide": false,
+          "query": "from(bucket: \"metrics\")\n  |> range(start: -1h)\n  |> filter(fn: (r) => r._measurement == \"click\")\n  |> filter(fn: (r) => r._field == \"count\")\n  |> group()\n  |> sum()",
+          "refId": "B"
         }
       ],
       "title": "Conversion Rate (1h Window)",
+      "transformations": [
+        {
+          "id": "calculateField",
+          "options": {
+            "alias": "ConvRate",
+            "binary": {
+              "left": "_value",
+              "operator": "/",
+              "reducer": "sum",
+              "right": "_value"
+            },
+            "mode": "binary",
+            "reduce": {
+              "reducer": "sum"
+            }
+          }
+        },
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "A-_value": true,
+              "B-_value": true,
+              "Time": true,
+              "_value": true
+            },
+            "indexByName": {},
+            "renameByName": {}
+          }
+        },
+        {
+          "id": "calculateField",
+          "options": {
+            "alias": "ConvRate_Percent",
+            "binary": {
+              "left": "ConvRate",
+              "operator": "*",
+              "reducer": "sum",
+              "right": "100"
+            },
+            "mode": "binary",
+            "reduce": {
+              "reducer": "sum"
+            }
+          }
+        },
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "ConvRate": true
+            },
+            "indexByName": {},
+            "renameByName": {}
+          }
+        }
+      ],
       "type": "gauge"
     },
     {
@@ -453,11 +585,11 @@
             "type": "influxdb",
             "uid": "P951FEA4DE68E13C5"
           },
-          "query": "from(bucket: \"metrics\")\n  |> range(start: -24h)\n  |> filter(fn: (r) => r._measurement == \"conversion\")\n  |> group(columns: [\"advertiser_id\"])\n  |> sum(column: \"revenue\")\n  |> group()\n  |> sort(columns: [\"_value\"], desc: true)\n  |> limit(n: 10)",
+          "query": "from(bucket: \"metrics\")\n  |> range(start: -24h)\n  |> filter(fn: (r) => r._measurement == \"conversion\")\n  |> filter(fn: (r) => r._field == \"revenue\")\n  |> group(columns: [\"state\"])\n  |> sum()\n  |> group()\n  |> sort(columns: [\"_value\"], desc: true)\n  |> limit(n: 10)",
           "refId": "A"
         }
       ],
-      "title": "Top 10 Advertisers by Revenue (24h)",
+      "title": "Top 10 States by Revenue (24h)",
       "type": "barchart"
     },
     {
@@ -485,5 +617,5 @@
   "schemaVersion": 39,
   "title": "Signal Catcher - Monitoring Board",
   "uid": "signal_catcher_dashboard",
-  "version": 2
+  "version": 6
 }
