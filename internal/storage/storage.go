@@ -59,14 +59,20 @@ func NewStorage() *Storage {
 
 func (s *Storage) WriteBatch(ctx context.Context, impressions []models.Impression, clicks []models.Click, conversions []models.Conversion) error {
 	// 1. Write to MinIO (Hive-style)
-	if err := s.writeToMinIO(ctx, "impressions", impressions); err != nil {
-		return fmt.Errorf("minio impressions error: %w", err)
+	if len(impressions) > 0 {
+		if err := s.writeToMinIO(ctx, "impressions", impressions); err != nil {
+			return fmt.Errorf("minio impressions error: %w", err)
+		}
 	}
-	if err := s.writeToMinIO(ctx, "clicks", clicks); err != nil {
-		return fmt.Errorf("minio clicks error: %w", err)
+	if len(clicks) > 0 {
+		if err := s.writeToMinIO(ctx, "clicks", clicks); err != nil {
+			return fmt.Errorf("minio clicks error: %w", err)
+		}
 	}
-	if err := s.writeToMinIO(ctx, "conversions", conversions); err != nil {
-		return fmt.Errorf("minio conversions error: %w", err)
+	if len(conversions) > 0 {
+		if err := s.writeToMinIO(ctx, "conversions", conversions); err != nil {
+			return fmt.Errorf("minio conversions error: %w", err)
+		}
 	}
 
 	// 2. Write to InfluxDB
@@ -78,9 +84,7 @@ func (s *Storage) WriteBatch(ctx context.Context, impressions []models.Impressio
 }
 
 func (s *Storage) writeToMinIO(ctx context.Context, eventType string, events interface{}) error {
-	// For simplicity, we write one file per batch.
-	// Hive-style: year=YYYY/month=MM/day=DD/hour=HH/
-	now := time.Now()
+	now := time.Now().UTC()
 	path := fmt.Sprintf("events/%s/year=%d/month=%02d/day=%02d/hour=%02d/%d.json",
 		eventType, now.Year(), now.Month(), now.Day(), now.Hour(), now.UnixNano())
 
@@ -97,12 +101,20 @@ func (s *Storage) writeToMinIO(ctx context.Context, eventType string, events int
 
 func (s *Storage) writeToInflux(ctx context.Context, impressions []models.Impression, clicks []models.Click, conversions []models.Conversion) error {
 	for _, imp := range impressions {
+		// Base tags for all impressions
+		tags := map[string]string{
+			"state":           imp.State,
+			"search_keywords": imp.SearchKeywords,
+		}
+		
+		// If there are ads, we record the first one for simplified real-time top-advertiser metrics
+		if len(imp.Ads) > 0 {
+			tags["advertiser_id"] = imp.Ads[0].Advertiser.AdvertiserID
+			tags["advertiser_name"] = imp.Ads[0].Advertiser.AdvertiserName
+		}
+
 		p := influxdb2.NewPoint("impression",
-			map[string]string{
-				"state":           imp.State,
-				"search_keywords": imp.SearchKeywords,
-				"session_id":      imp.SessionID,
-			},
+			tags,
 			map[string]interface{}{
 				"count": 1,
 			},
