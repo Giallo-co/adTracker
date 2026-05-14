@@ -40,10 +40,10 @@ func main() {
 	store := storage.NewStorage()
 
 	handler := &ConsumerHandler{
-		Ready:       make(chan bool),
-		store:       store,
+		Ready:         make(chan bool),
+		store:         store,
 		batchSize:     500,
-		flushInterval: 1 * time.Second,
+		flushInterval: 5 * time.Second,
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
