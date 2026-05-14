@@ -49,29 +49,29 @@ const StateTable = ({ data }) => (
     <table className="w-full text-sm text-left text-slate-300">
       <thead className="text-xs text-slate-500 uppercase bg-slate-900/50">
         <tr>
-          <th className="px-6 py-3 rounded-l-lg">State</th>
-          <th className="px-6 py-3 text-right">Events</th>
+          <th className="px-6 py-3 rounded-l-lg">State / Category</th>
+          <th className="px-6 py-3 text-right">Total Impressions</th>
           <th className="px-6 py-3 rounded-r-lg">Relative Volume</th>
         </tr>
       </thead>
       <tbody>
-        {data && data.length > 0 ? data.map((state, index) => {
-          const maxVal = Math.max(...data.map(s => s.value || 0));
-          const width = maxVal > 0 ? (state.value / maxVal) * 100 : 0;
+        {data && data.length > 0 ? data.map((item, index) => {
+          const maxVal = Math.max(...data.map(s => s.total_impressions || 0));
+          const width = maxVal > 0 ? (item.total_impressions / maxVal) * 100 : 0;
           return (
             <tr key={index} className="border-b border-slate-700/50 hover:bg-slate-700/20 transition-colors">
-              <td className="px-6 py-4 font-medium text-white">{state.name}</td>
-              <td className="px-6 py-4 text-right font-mono">{state.value}</td>
+              <td className="px-6 py-4 font-medium text-white">{item.state}</td>
+              <td className="px-6 py-4 text-right font-mono">{item.total_impressions?.toLocaleString()}</td>
               <td className="px-6 py-4">
                 <div className="w-full bg-slate-700 rounded-full h-1.5">
-                  <div className="bg-emerald-500 h-1.5 rounded-full" style={{ width: `${width}%`, transition: 'width 0.5s ease' }} />
+                  <div className="bg-blue-500 h-1.5 rounded-full" style={{ width: `${width}%`, transition: 'width 0.5s ease' }} />
                 </div>
               </td>
             </tr>
           );
         }) : (
           <tr>
-            <td colSpan="3" className="px-6 py-8 text-center text-slate-500 italic">No data from backend yet...</td>
+            <td colSpan="3" className="px-6 py-8 text-center text-slate-500 italic">No reports from Python (8081) yet...</td>
           </tr>
         )}
       </tbody>
@@ -89,41 +89,52 @@ const App = () => {
     ctr: 0,
     convRate: 0,
     history: [],
-    stateReport: [],
+    reportingData: [], 
   });
 
   useEffect(() => {
-    const fetchStats = async () => {
+    const fetchAllData = async () => {
       try {
-        const response = await fetch('http://localhost:8085/api/stats');
-        if (!response.ok) throw new Error('Network response was not ok');
-        
-        const newData = await response.json();
-        
+        // 1. Fetch de Real-time (Go API - Puerto 8085)
+        const statsResponse = await fetch('http://localhost:8085/api/stats');
+        const statsJson = await statsResponse.json();
+
+        // 2. Fetch de Reporting (Python FastAPI - Puerto 8081)
+        let reportJson = [];
+        try {
+          // RUTA CORREGIDA: Apunta al endpoint de Python
+          const reportResponse = await fetch('http://localhost:8081/report/top-states');
+          if (reportResponse.ok) {
+            reportJson = await reportResponse.json();
+          }
+        } catch (e) {
+          console.warn("Python Reporting service (8081) is not responding.");
+        }
+
         setData(prev => {
-          // Calculamos tasas
-          const ctr = newData.impressions > 0 ? ((newData.clicks / newData.impressions) * 100).toFixed(1) : 0;
-          const convRate = newData.clicks > 0 ? ((newData.conversions / newData.clicks) * 100).toFixed(1) : 0;
+          const ctr = statsJson.impressions > 0 ? ((statsJson.clicks / statsJson.impressions) * 100).toFixed(1) : 0;
+          const convRate = statsJson.clicks > 0 ? ((statsJson.conversions / statsJson.clicks) * 100).toFixed(1) : 0;
           
-          // Generamos el punto de la gráfica (volumen actual)
           const newTime = new Date().toLocaleTimeString().split(' ')[0];
-          const newHistory = [...prev.history, { time: newTime, val: newData.impressions }].slice(-20);
+          const newHistory = [...prev.history, { time: newTime, val: statsJson.impressions }].slice(-20);
 
           return {
-            ...newData,
+            ...statsJson,
             ctr,
             convRate,
             history: newHistory,
-            // Si el backend no manda estados aún, mantenemos lo que había
-            stateReport: newData.stateReport || prev.stateReport
+            // Guardamos la lista de estados del 8081
+            reportingData: reportJson.length > 0 ? reportJson : prev.reportingData
           };
         });
+
       } catch (error) {
-        console.error("Error fetching data from Go backend:", error);
+        console.error("Critical error fetching data:", error);
       }
     };
 
-    const interval = setInterval(fetchStats, 1000); // Actualiza cada 1 segundo para más fluidez
+    // Actualización cada 1.5 segundos para fluidez
+    const interval = setInterval(fetchAllData, 1500); 
     return () => clearInterval(interval);
   }, []);
 
@@ -135,7 +146,7 @@ const App = () => {
           <h1 className="text-3xl font-bold bg-gradient-to-r from-blue-400 to-emerald-400 bg-clip-text text-transparent tracking-tight">
             AdTracker Signal Board
           </h1>
-          <p className="text-slate-400 text-sm mt-1">Real-time processing feed from Go API</p>
+          <p className="text-slate-400 text-sm mt-1">Multi-source: Real-time (8085) & DuckDB Reports (8081)</p>
         </div>
         <div className="flex items-center gap-3 bg-slate-800 px-4 py-2 rounded-full border border-slate-700 shadow-inner">
           <div className="relative flex h-3 w-3">
@@ -158,9 +169,9 @@ const App = () => {
           <div className="flex items-center justify-between mb-6">
             <div className="flex items-center gap-2 text-slate-400">
               <BarChart3 size={18} />
-              <h2 className="text-sm font-semibold uppercase tracking-wider">Throughput (Impressions over time)</h2>
+              <h2 className="text-sm font-semibold uppercase tracking-wider">Throughput (Impressions)</h2>
             </div>
-            <span className="text-[10px] bg-slate-700 px-2 py-1 rounded text-slate-400 font-mono">PORT: 8085</span>
+            <span className="text-[10px] bg-slate-700 px-2 py-1 rounded text-slate-400 font-mono">SOURCE: 8085</span>
           </div>
           <div className="flex-grow min-h-[320px]">
             <ResponsiveContainer width="100%" height="100%">
@@ -178,8 +189,7 @@ const App = () => {
                   dataKey="val" 
                   stroke="#3b82f6" 
                   strokeWidth={3} 
-                  dot={{ r: 0 }} 
-                  activeDot={{ r: 6, strokeWidth: 0 }} 
+                  dot={false} 
                   isAnimationActive={false} 
                 />
               </LineChart>
@@ -194,17 +204,21 @@ const App = () => {
           <h2 className="text-slate-500 text-[10px] font-black uppercase self-start mb-8 tracking-[0.2em]">Efficiency Metrics</h2>
           <div className="flex justify-around w-full items-center">
             <GaugeChart value={data.ctr} label="CTR" color="#fbbf24" />
-            <div className="w-px h-16 bg-slate-700 shadow-glow" />
+            <div className="w-px h-16 bg-slate-700" />
             <GaugeChart value={data.convRate} label="CR" color="#10b981" />
           </div>
         </div>
 
         <div className="lg:col-span-2 bg-slate-800 p-6 rounded-xl border border-slate-700 shadow-lg">
-          <div className="flex items-center gap-2 mb-6 text-slate-400">
-            <Map size={18} />
-            <h2 className="text-sm font-semibold uppercase tracking-wider">Geographic Distribution</h2>
+          <div className="flex items-center justify-between mb-6">
+            <div className="flex items-center gap-2 text-slate-400">
+              <Map size={18} />
+              <h2 className="text-sm font-semibold uppercase tracking-wider">Reports Summary (DuckDB)</h2>
+            </div>
+            <span className="text-[10px] bg-slate-700 px-2 py-1 rounded text-slate-400 font-mono">SOURCE: 8081</span>
           </div>
-          <StateTable data={data.stateReport} />
+          {/* Tabla que consume directamente del servicio de Python */}
+          <StateTable data={data.reportingData} />
         </div>
       </div>
     </div>
